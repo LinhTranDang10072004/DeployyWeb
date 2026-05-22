@@ -48,21 +48,30 @@ login_manager.login_message_category = 'warning'
 # LOGGING (NFR: ghi log thao tác và lỗi)
 # ============================================================
 def setup_logging():
-    log_dir = app.config.get('LOG_DIR')
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir, exist_ok=True)
     level = getattr(logging, str(app.config.get('LOG_LEVEL', 'INFO')).upper(), logging.INFO)
-
-    file_handler = RotatingFileHandler(
-        os.path.join(log_dir, 'app.log'), maxBytes=2_000_000, backupCount=5, encoding='utf-8'
-    )
-    file_handler.setLevel(level)
-    file_handler.setFormatter(logging.Formatter(
-        '%(asctime)s [%(levelname)s] %(name)s - %(message)s'
-    ))
-
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s - %(message)s')
     app.logger.handlers.clear()
-    app.logger.addHandler(file_handler)
+
+    # Ghi ra console để thấy lỗi trên Render Logs
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(level)
+    stream_handler.setFormatter(formatter)
+    app.logger.addHandler(stream_handler)
+
+    try:
+        log_dir = app.config.get('LOG_DIR')
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        if log_dir:
+            file_handler = RotatingFileHandler(
+                os.path.join(log_dir, 'app.log'), maxBytes=2_000_000, backupCount=5, encoding='utf-8'
+            )
+            file_handler.setLevel(level)
+            file_handler.setFormatter(formatter)
+            app.logger.addHandler(file_handler)
+    except OSError as exc:
+        app.logger.warning('File logging disabled: %s', exc)
+
     app.logger.setLevel(level)
     app.logger.propagate = False
 
@@ -279,6 +288,27 @@ def bootstrap_database():
 
 
 bootstrap_database()
+
+
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
+
+
+@app.route('/health')
+def health():
+    """Kiểm tra DB + deploy (dùng trên Render)."""
+    try:
+        product_count = Product.query.count()
+        user_count = User.query.count()
+        return jsonify({
+            'status': 'ok',
+            'products': product_count,
+            'users': user_count,
+        })
+    except Exception as exc:
+        app.logger.exception('Health check failed')
+        return jsonify({'status': 'error', 'message': str(exc)}), 500
 
 
 def log_ai_conversation(question, answer, source='chat', intent=None, score=None):
