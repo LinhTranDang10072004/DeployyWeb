@@ -53,6 +53,15 @@ Chi tiết vận hành: xem `HUONG_DAN_CHAY.md` và `LUONG_CHAY.md`.
 | Seller | `seller` | `seller123` |
 | Buyer | `khachhang` | `123456` |
 
+## Deploy Render (bắt buộc commit mới nhất, không phải `first commit`)
+
+1. GitHub `main` phải là commit mới (có `/health`, seed khi build).
+2. Render Dashboard → **Manual Deploy** → **Deploy latest commit** (không Rollback).
+3. **Build Command:** `pip install -r requirements.txt && python seed.py --small`
+4. **Start Command:** `gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120`
+5. Env: `FLASK_DEBUG=0`, `PYTHON_VERSION=3.11.9`
+6. Sau deploy, kiểm tra: `https://<ten-service>.onrender.com/health` → `{"status":"ok",...}`
+
 ## Cách chạy nhanh
 ```bash
 python -m venv .venv
