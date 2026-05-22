@@ -256,7 +256,7 @@ _bootstrapped = False
 
 
 def bootstrap_database():
-    """Tạo bảng + dữ liệu tối thiểu khi chạy production (gunicorn trên Render)."""
+    """Tạo bảng + seed đủ ngưỡng đề cương khi chạy production (Render)."""
     global _bootstrapped
     with _bootstrap_lock:
         if _bootstrapped:
@@ -268,16 +268,15 @@ def bootstrap_database():
             except Exception as exc:
                 app.logger.warning('Schema migration skipped: %s', exc)
 
-            if Product.query.count() == 0:
-                try:
-                    from seed import seed_categories, seed_default_accounts, seed_users, seed_products
-                    seed_categories()
-                    seed_default_accounts()
-                    seed_users(target_buyers=10, target_sellers=3)
-                    seed_products(target=20)
-                    app.logger.info('Bootstrap seed: minimal catalog ready')
-                except Exception:
-                    app.logger.exception('Bootstrap seed failed')
+            try:
+                from seed import data_meets_de_cuong, seed_de_cuong
+                if not data_meets_de_cuong():
+                    app.logger.info('DB chua du de cuong — seed day du (320 SP, 200+ user...)')
+                    seed_de_cuong(reset=True, small=False, fixed=True)
+                else:
+                    app.logger.info('DB da du nguong de cuong')
+            except Exception:
+                app.logger.exception('Bootstrap seed failed')
 
             try:
                 rebuild_ai_index()
@@ -297,14 +296,28 @@ def favicon():
 
 @app.route('/health')
 def health():
-    """Kiểm tra DB + deploy (dùng trên Render)."""
+    """Kiểm tra DB + đủ ngưỡng đề cương PI 4.2."""
     try:
-        product_count = Product.query.count()
-        user_count = User.query.count()
+        from seed import DE_CUONG_MIN, data_meets_de_cuong
+        counts = {
+            'users': User.query.count(),
+            'products': Product.query.count(),
+            'orders': Order.query.count(),
+            'reviews': Review.query.count(),
+            'ai_conversations': AIConversation.query.count(),
+        }
+        de_cuong = {
+            key: {
+                'current': counts[key],
+                'required': DE_CUONG_MIN[key],
+                'ok': counts[key] >= DE_CUONG_MIN[key],
+            }
+            for key in DE_CUONG_MIN
+        }
         return jsonify({
-            'status': 'ok',
-            'products': product_count,
-            'users': user_count,
+            'status': 'ok' if data_meets_de_cuong() else 'incomplete',
+            'de_cuong': de_cuong,
+            'counts': counts,
         })
     except Exception as exc:
         app.logger.exception('Health check failed')

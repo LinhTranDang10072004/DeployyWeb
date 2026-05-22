@@ -57,7 +57,7 @@ Chi tiết vận hành: xem `HUONG_DAN_CHAY.md` và `LUONG_CHAY.md`.
 
 1. GitHub `main` phải là commit mới (có `/health`, seed khi build).
 2. Render Dashboard → **Manual Deploy** → **Deploy latest commit** (không Rollback).
-3. **Build Command:** `pip install -r requirements.txt && python seed.py --small`
+3. **Build Command:** `pip install -r requirements.txt && python seed.py --reset --fixed` (≥320 SP, ≥200 user, ≥500 đơn — mất ~5–15 phút)
 4. **Start Command:** `gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120`
 5. Env: `FLASK_DEBUG=0`, `PYTHON_VERSION=3.11.9`
 6. Sau deploy, kiểm tra: `https://<ten-service>.onrender.com/health` → `{"status":"ok",...}`

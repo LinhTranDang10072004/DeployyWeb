@@ -9,7 +9,7 @@ Tuân thủ PI 4.2 của đề cương:
   - ≥200 hội thoại AI
 
 Cách chạy:
-  python seed.py            # seed đầy đủ (mặc định), bổ sung nếu thiếu
+  python seed.py            # seed đầy đủ (mặc định)
   python seed.py --reset    # xóa toàn bộ dữ liệu cũ rồi seed lại
   python seed.py --fixed    # dùng random.seed(42) — dữ liệu sinh ra ổn định
   python seed.py --reset --fixed   # seed lại từ đầu, dữ liệu cố định (đề cương)
@@ -519,24 +519,84 @@ def ensure_schema_compat():
         print(f'[WARN] schema compat: {e}')
 
 
-# Ngưỡng tối thiểu theo đề cương (PI 4.2)
-DE_CUONG_MIN = {
-    'products': 300,
-    'users': 200,
-    'orders': 500,
-    'reviews': 300,
-    'ai_conversations': 200,
-}
+def seed_de_cuong(*, reset=False, small=False, fixed=False):
+    """Sinh dữ liệu theo PI 4.2 (gọi từ CLI, Render build, hoặc bootstrap app)."""
+    if fixed:
+        random.seed(42)
+        print('[OK] Fixed seed: random.seed(42)')
 
-# Mục tiêu seed mặc định (hơn ngưỡng một chút)
-SEED_TARGETS = {
-    'buyers': 210,
-    'sellers': 10,
-    'products': 320,
-    'orders': 520,
-    'reviews': 320,
-    'ai_conversations': 220,
-}
+    db.create_all()
+    ensure_schema_compat()
+    print('[OK] Tables ready.')
+
+    if reset:
+        reset_all()
+
+    seed_categories()
+    seed_default_accounts()
+
+    if small:
+        seed_users(target_buyers=10, target_sellers=3)
+        seed_products(target=15)
+        seed_orders(target=15)
+        seed_reviews(target=10)
+        seed_ai_conversations(target=10)
+    else:
+        if fake is None:
+            print('[WARN] Faker chưa cài. Chạy: pip install Faker')
+        t = SEED_TARGETS
+        seed_users(target_buyers=t['buyers'], target_sellers=t['sellers'])
+        seed_products(target=t['products'])
+        seed_orders(target=t['orders'])
+        seed_reviews(target=t['reviews'])
+        seed_ai_conversations(target=t['ai_conversations'])
+
+    counts = {
+        'users': User.query.count(),
+        'products': Product.query.count(),
+        'orders': Order.query.count(),
+        'reviews': Review.query.count(),
+        'ai_conversations': AIConversation.query.count(),
+    }
+
+    print('\n[SUMMARY]')
+    print(f'  Users:           {counts["users"]} (buyers={User.query.filter_by(role="buyer").count()}, sellers={User.query.filter_by(role="seller").count()})')
+    print(f'  Categories:      {Category.query.count()}')
+    print(f'  Products:        {counts["products"]}')
+    print(f'  Orders:          {counts["orders"]}')
+    print(f'  Order Items:     {OrderItem.query.count()}')
+    print(f'  Payments:        {Payment.query.count()}')
+    print(f'  Shipments:       {Shipment.query.count()}')
+    print(f'  Reviews:         {counts["reviews"]}')
+    print(f'  AI Conversations:{counts["ai_conversations"]}')
+    print('\n[DE CUONG]')
+    for label, key in [
+        ('Users', 'users'),
+        ('Products', 'products'),
+        ('Orders', 'orders'),
+        ('Reviews', 'reviews'),
+        ('AI Conversations', 'ai_conversations'),
+    ]:
+        val = counts[key]
+        need = DE_CUONG_MIN[key]
+        ok = 'DAT' if val >= need else 'CHUA DAT'
+        print(f'  {label}: {val} (yeu cau >= {need}) -> {ok}')
+    print('\n[DONE] Seed completed!')
+    return counts
+
+
+def data_meets_de_cuong():
+    """True nếu DB đã đủ ngưỡng đề cương."""
+    try:
+        return (
+            Product.query.count() >= DE_CUONG_MIN['products']
+            and User.query.count() >= DE_CUONG_MIN['users']
+            and Order.query.count() >= DE_CUONG_MIN['orders']
+            and Review.query.count() >= DE_CUONG_MIN['reviews']
+            and AIConversation.query.count() >= DE_CUONG_MIN['ai_conversations']
+        )
+    except Exception:
+        return False
 
 
 def main():
@@ -549,63 +609,8 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.fixed:
-        random.seed(42)
-        print('[OK] Fixed seed: random.seed(42)')
-
     with app.app_context():
-        db.create_all()
-        ensure_schema_compat()
-        print('[OK] Tables ready.')
-
-        if args.reset:
-            reset_all()
-
-        seed_categories()
-        seed_default_accounts()
-
-        if args.small:
-            seed_users(target_buyers=10, target_sellers=3)
-            seed_products(target=15)
-            seed_orders(target=15)
-            seed_reviews(target=10)
-            seed_ai_conversations(target=10)
-        else:
-            if fake is None:
-                print('[WARN] Faker chưa cài. Chạy: pip install Faker')
-            t = SEED_TARGETS
-            seed_users(target_buyers=t['buyers'], target_sellers=t['sellers'])
-            seed_products(target=t['products'])
-            seed_orders(target=t['orders'])
-            seed_reviews(target=t['reviews'])
-            seed_ai_conversations(target=t['ai_conversations'])
-
-        print('\n[SUMMARY]')
-        print(f'  Users:           {User.query.count()} (buyers={User.query.filter_by(role="buyer").count()}, sellers={User.query.filter_by(role="seller").count()})')
-        print(f'  Categories:      {Category.query.count()}')
-        print(f'  Products:        {Product.query.count()}')
-        print(f'  Orders:          {Order.query.count()}')
-        print(f'  Order Items:     {OrderItem.query.count()}')
-        print(f'  Payments:        {Payment.query.count()}')
-        print(f'  Shipments:       {Shipment.query.count()}')
-        print(f'  Reviews:         {Review.query.count()}')
-        print(f'  AI Conversations:{AIConversation.query.count()}')
-        print('\n[DE CUONG]')
-        u, o, r, a, p = (
-            User.query.count(), Order.query.count(), Review.query.count(),
-            AIConversation.query.count(), Product.query.count(),
-        )
-        m = DE_CUONG_MIN
-        for label, val, need in [
-            ('Users', u, m['users']),
-            ('Products', p, m['products']),
-            ('Orders', o, m['orders']),
-            ('Reviews', r, m['reviews']),
-            ('AI Conversations', a, m['ai_conversations']),
-        ]:
-            ok = 'DAT' if val >= need else 'CHUA DAT'
-            print(f'  {label}: {val} (yeu cau >= {need}) -> {ok}')
-        print('\n[DONE] Seed completed!')
+        seed_de_cuong(reset=args.reset, small=args.small, fixed=args.fixed)
 
 
 if __name__ == '__main__':
