@@ -22,6 +22,7 @@ import random
 import secrets
 from datetime import datetime, timedelta
 
+from config import DE_CUONG_MIN, SEED_TARGETS
 from app import app
 from models import (
     db, User, Category, Product, Order, OrderItem,

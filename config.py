@@ -8,6 +8,24 @@ except Exception:
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
+# PI 4.2 — ngưỡng dữ liệu thử nghiệm (đề cương)
+DE_CUONG_MIN = {
+    'products': 300,
+    'users': 200,
+    'orders': 500,
+    'reviews': 300,
+    'ai_conversations': 200,
+}
+
+SEED_TARGETS = {
+    'buyers': 210,
+    'sellers': 10,
+    'products': 320,
+    'orders': 520,
+    'reviews': 320,
+    'ai_conversations': 220,
+}
+
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'nong-san-xanh-secret-key-2026-change-me'

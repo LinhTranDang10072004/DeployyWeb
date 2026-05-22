@@ -16,7 +16,7 @@ from flask_login import (
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 
-from config import Config
+from config import Config, DE_CUONG_MIN
 from models import (
     db, User, Category, Product, Order, OrderItem,
     Payment, Shipment, Review, ReturnRequest, AIConversation,
@@ -271,7 +271,10 @@ def bootstrap_database():
             try:
                 from seed import data_meets_de_cuong, seed_de_cuong
                 if not data_meets_de_cuong():
-                    app.logger.info('DB chua du de cuong — seed day du (320 SP, 200+ user...)')
+                    app.logger.info(
+                        'DB chua du de cuong (can >=%s SP) — seed day du...',
+                        DE_CUONG_MIN['products'],
+                    )
                     seed_de_cuong(reset=True, small=False, fixed=True)
                 else:
                     app.logger.info('DB da du nguong de cuong')
@@ -286,9 +289,6 @@ def bootstrap_database():
         _bootstrapped = True
 
 
-bootstrap_database()
-
-
 @app.route('/favicon.ico')
 def favicon():
     return '', 204
@@ -298,7 +298,7 @@ def favicon():
 def health():
     """Kiểm tra DB + đủ ngưỡng đề cương PI 4.2."""
     try:
-        from seed import DE_CUONG_MIN, data_meets_de_cuong
+        from seed import data_meets_de_cuong
         counts = {
             'users': User.query.count(),
             'products': Product.query.count(),
@@ -1506,6 +1506,12 @@ def forbidden(e):
 def server_error(e):
     app.logger.exception('Internal server error')
     return render_template('errors/500.html'), 500
+
+
+# ============================================================
+# KHỞI TẠO DB (sau khi load xong app — tránh import vòng với seed.py)
+# ============================================================
+bootstrap_database()
 
 
 # ============================================================
