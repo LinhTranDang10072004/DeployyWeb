@@ -1,6 +1,7 @@
 import os
 import logging
 import secrets
+import threading
 from datetime import datetime
 from functools import wraps
 from logging.handlers import RotatingFileHandler
@@ -239,6 +240,45 @@ def get_seller_order_items_query():
 def rebuild_ai_index():
     products = Product.query.filter_by(is_visible=True).all()
     ai_engine.build_index(products)
+
+
+_bootstrap_lock = threading.Lock()
+_bootstrapped = False
+
+
+def bootstrap_database():
+    """Tạo bảng + dữ liệu tối thiểu khi chạy production (gunicorn trên Render)."""
+    global _bootstrapped
+    with _bootstrap_lock:
+        if _bootstrapped:
+            return
+        with app.app_context():
+            db.create_all()
+            try:
+                ensure_sqlite_schema()
+            except Exception as exc:
+                app.logger.warning('Schema migration skipped: %s', exc)
+
+            if Product.query.count() == 0:
+                try:
+                    from seed import seed_categories, seed_default_accounts, seed_users, seed_products
+                    seed_categories()
+                    seed_default_accounts()
+                    seed_users(target_buyers=10, target_sellers=3)
+                    seed_products(target=20)
+                    app.logger.info('Bootstrap seed: minimal catalog ready')
+                except Exception:
+                    app.logger.exception('Bootstrap seed failed')
+
+            try:
+                rebuild_ai_index()
+            except Exception as exc:
+                app.logger.warning('AI index skipped: %s', exc)
+
+        _bootstrapped = True
+
+
+bootstrap_database()
 
 
 def log_ai_conversation(question, answer, source='chat', intent=None, score=None):
@@ -1422,7 +1462,7 @@ def forbidden(e):
 @app.errorhandler(500)
 def server_error(e):
     app.logger.exception('Internal server error')
-    return render_template('errors/404.html'), 500
+    return render_template('errors/500.html'), 500
 
 
 # ============================================================
