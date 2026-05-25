@@ -105,6 +105,7 @@ class Order(db.Model):
     shipping_phone = db.Column(db.String(20), nullable=False)
     shipping_address = db.Column(db.String(500), nullable=False)
     note = db.Column(db.Text, nullable=True)
+    admin_confirmed_at = db.Column(db.DateTime, nullable=True)
 
     items = db.relationship('OrderItem', backref='order', lazy='joined', cascade='all, delete-orphan')
     payment = db.relationship('Payment', backref='order', uselist=False, cascade='all, delete-orphan')

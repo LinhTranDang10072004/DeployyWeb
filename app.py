@@ -220,6 +220,55 @@ def ensure_sqlite_schema():
             db.session.execute(db.text(ddl))
             db.session.commit()
 
+    orders_cols = db.session.execute(db.text("PRAGMA table_info(orders)")).fetchall()
+    order_col_names = {col[1] for col in orders_cols}
+    if 'admin_confirmed_at' not in order_col_names:
+        db.session.execute(db.text("ALTER TABLE orders ADD COLUMN admin_confirmed_at DATETIME"))
+        db.session.commit()
+
+
+# Shopee-style: hủy khi seller chưa chuẩn bị/gửi; chặn khi admin HOẶC seller bắt đầu giao hàng.
+SELLER_PREP_OR_SHIP_STATUSES = frozenset(['Đang chuẩn bị', 'Đang giao', 'Đã giao'])
+
+
+def order_is_cancelled(order):
+    return order.status == 'Đã hủy'
+
+
+def order_admin_confirmed(order):
+    return order.admin_confirmed_at is not None
+
+
+def buyer_can_cancel_item(item, order):
+    if order.status in ('Đã hủy', 'Đã hoàn thành'):
+        return False
+    item_status = item.seller_status or 'Đơn mới'
+    if item_status in SELLER_PREP_OR_SHIP_STATUSES:
+        return False
+    if order_admin_confirmed(order):
+        return False
+    return item_status in ('Đơn mới', 'Đã xác nhận')
+
+
+def buyer_can_cancel_order(order):
+    if not order.items:
+        return False
+    return all(buyer_can_cancel_item(item, order) for item in order.items)
+
+
+def buyer_cancel_block_reason(order):
+    if order.status == 'Đã hủy':
+        return 'Đơn hàng đã được hủy.'
+    if order.status == 'Đã hoàn thành':
+        return 'Đơn hàng đã hoàn thành.'
+    if order_admin_confirmed(order):
+        return 'Admin đã xác nhận nhận đơn — không thể hủy.'
+    for item in order.items:
+        status = item.seller_status or 'Đơn mới'
+        if status in SELLER_PREP_OR_SHIP_STATUSES:
+            return 'Seller đang chuẩn bị hoặc đang giao hàng — không thể hủy.'
+    return None
+
 
 def sync_order_status_from_items(order):
     if order.status == 'Đã hủy':
@@ -268,21 +317,17 @@ def bootstrap_database():
             except Exception as exc:
                 app.logger.warning('Schema migration skipped: %s', exc)
 
-            try:
-                from seed import data_meets_de_cuong, seed_de_cuong
-                if not data_meets_de_cuong():
-                    app.logger.info(
-                        'DB chua du de cuong (can >=%s SP) — seed day du...',
-                        DE_CUONG_MIN['products'],
-                    )
-                    seed_de_cuong(reset=True, small=False, fixed=True)
-                else:
-                    app.logger.info('DB da du nguong de cuong')
-            except Exception:
-                app.logger.exception('Bootstrap seed failed')
+            product_count = Product.query.count()
+            if product_count == 0:
+                app.logger.warning(
+                    'DB trong — can chay seed luc build: python seed.py --reset --fixed'
+                )
+            else:
+                app.logger.info('DB co %s san pham', product_count)
 
             try:
-                rebuild_ai_index()
+                if product_count > 0:
+                    rebuild_ai_index()
             except Exception as exc:
                 app.logger.warning('AI index skipped: %s', exc)
 
@@ -748,7 +793,35 @@ def order_detail(order_id):
                                ('return', 'Trả hàng'),
                                ('exchange', 'Đổi hàng'),
                                ('cancel', 'Hủy sản phẩm'),
-                           ])
+                           ],
+                           buyer_can_cancel=buyer_can_cancel_order(order),
+                           cancel_block_reason=buyer_cancel_block_reason(order))
+
+
+@app.route('/orders/<int:order_id>/cancel', methods=['POST'])
+@login_required
+def buyer_cancel_order(order_id):
+    order = Order.query.get_or_404(order_id)
+    if order.user_id != current_user.id:
+        abort(403)
+    if not buyer_can_cancel_order(order):
+        reason = buyer_cancel_block_reason(order) or 'Không thể hủy đơn lúc này.'
+        flash(reason, 'warning')
+        return redirect(url_for('order_detail', order_id=order.id))
+
+    for item in order.items:
+        product = db.session.get(Product, item.product_id)
+        if product:
+            product.stock += item.quantity
+
+    order.status = 'Đã hủy'
+    if order.payment and order.payment.status == 'Đã thanh toán':
+        order.payment.status = 'Hoàn tiền'
+
+    db.session.commit()
+    app.logger.info(f'Buyer {current_user.username} cancelled order #{order.id}')
+    flash('Đã hủy đơn hàng thành công.', 'success')
+    return redirect(url_for('order_detail', order_id=order.id))
 
 
 @app.route('/orders/<int:order_id>/tracking')
@@ -825,9 +898,10 @@ def submit_return_request(order_id, item_id):
     if request_type in ['return', 'exchange'] and item_status != 'Đã giao':
         flash('Chỉ được yêu cầu đổi/trả sau khi sản phẩm đã giao thành công.', 'warning')
         return redirect(url_for('order_detail', order_id=order.id))
-    if request_type == 'cancel' and item_status in ['Đang giao', 'Đã giao']:
-        flash('Không thể hủy khi sản phẩm đang giao hoặc đã giao.', 'warning')
-        return redirect(url_for('order_detail', order_id=order.id))
+    if request_type == 'cancel':
+        if not buyer_can_cancel_item(item, order):
+            flash(buyer_cancel_block_reason(order) or 'Không thể hủy sản phẩm lúc này.', 'warning')
+            return redirect(url_for('order_detail', order_id=order.id))
 
     ret = ReturnRequest(
         order_item_id=item.id,
@@ -1070,6 +1144,9 @@ def admin_order_detail(order_id):
 @admin_required
 def admin_order_update(order_id):
     order = Order.query.get_or_404(order_id)
+    if order_is_cancelled(order):
+        flash('Đơn hàng đã bị khách hủy — không thể cập nhật trạng thái.', 'warning')
+        return redirect(url_for('admin_order_detail', order_id=order.id))
     new_status = request.form.get('status')
     valid_statuses = ['Đang xử lý', 'Đang giao', 'Đã hoàn thành', 'Đã hủy']
     if new_status in valid_statuses:
@@ -1079,6 +1156,24 @@ def admin_order_update(order_id):
         flash(f'Đơn hàng #{order.id} đã cập nhật: {new_status}', 'success')
     else:
         flash('Trạng thái không hợp lệ!', 'danger')
+    return redirect(url_for('admin_order_detail', order_id=order.id))
+
+
+@app.route('/admin/orders/<int:order_id>/confirm', methods=['POST'])
+@admin_required
+def admin_order_confirm(order_id):
+    order = Order.query.get_or_404(order_id)
+    if order.status == 'Đã hủy':
+        flash('Đơn hàng đã hủy, không thể xác nhận.', 'warning')
+        return redirect(url_for('admin_order_detail', order_id=order.id))
+    if order.admin_confirmed_at:
+        flash('Admin đã xác nhận nhận đơn này trước đó.', 'info')
+        return redirect(url_for('admin_order_detail', order_id=order.id))
+
+    order.admin_confirmed_at = datetime.utcnow()
+    db.session.commit()
+    app.logger.info(f'Admin confirmed receipt of order #{order.id}')
+    flash(f'Đã xác nhận nhận đơn hàng #{order.id}.', 'success')
     return redirect(url_for('admin_order_detail', order_id=order.id))
 
 
@@ -1250,6 +1345,9 @@ def seller_order_item_update(item_id):
     item = OrderItem.query.get_or_404(item_id)
     if not item.product or item.product.seller_id != current_user.id:
         abort(403)
+    if order_is_cancelled(item.order):
+        flash('Đơn hàng đã bị khách hủy — không thể cập nhật trạng thái.', 'warning')
+        return redirect(url_for('seller_order_detail', order_id=item.order_id))
 
     new_status = request.form.get('seller_status')
     valid_statuses = ['Đơn mới', 'Đã xác nhận', 'Đang chuẩn bị', 'Đang giao', 'Đã giao']
@@ -1289,6 +1387,9 @@ def seller_order_item_shipping_update(item_id):
     item = OrderItem.query.get_or_404(item_id)
     if not item.product or item.product.seller_id != current_user.id:
         abort(403)
+    if order_is_cancelled(item.order):
+        flash('Đơn hàng đã bị khách hủy — không thể cập nhật vận chuyển.', 'warning')
+        return redirect(url_for('seller_order_detail', order_id=item.order_id))
 
     carrier = request.form.get('shipping_carrier', '').strip()
     code = request.form.get('shipping_code', '').strip()

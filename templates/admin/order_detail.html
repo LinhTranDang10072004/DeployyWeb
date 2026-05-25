@@ -59,6 +59,27 @@
                 {% endif %}
             </div>
 
+            {% if order.status == 'Đã hủy' %}
+            <p class="text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2">
+                <i class="fas fa-ban mr-1"></i>
+                Khách hàng đã hủy đơn — chỉ xem, không cập nhật trạng thái.
+            </p>
+            {% else %}
+            {% if order.admin_confirmed_at %}
+            <p class="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 mb-3">
+                <i class="fas fa-check-circle mr-1"></i>
+                Admin đã nhận đơn lúc {{ order.admin_confirmed_at.strftime('%d/%m/%Y %H:%M') }}
+            </p>
+            {% else %}
+            <form action="{{ url_for('admin_order_confirm', order_id=order.id) }}" method="POST" class="mb-3">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit"
+                        class="w-full bg-green-brand-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-green-brand-700 transition">
+                    <i class="fas fa-clipboard-check mr-1"></i>Xác nhận đã nhận đơn
+                </button>
+            </form>
+            {% endif %}
+
             <form action="{{ url_for('admin_order_update', order_id=order.id) }}" method="POST" class="space-y-3">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <label class="block text-sm text-gray-600">Cập nhật trạng thái:</label>
@@ -73,6 +94,8 @@
                     <i class="fas fa-check mr-1"></i>Cập nhật
                 </button>
             </form>
+            <p class="text-xs text-gray-400 mt-2">Sau khi admin xác nhận nhận đơn, khách không thể tự hủy (giống Shopee).</p>
+            {% endif %}
         </div>
     </div>
 
