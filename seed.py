@@ -278,6 +278,18 @@ def seed_products(target=320):
     print(f'[OK] +{created} products. Total = {Product.query.count()}')
 
 
+def assign_product_images():
+    """Gán lại ảnh SVG local cho mọi sản phẩm (sau seed hoặc khi đổi bộ ảnh)."""
+    updated = 0
+    for p in Product.query.all():
+        new_img = image_path_for_product_name(p.name)
+        if p.image != new_img:
+            p.image = new_img
+            updated += 1
+    db.session.commit()
+    print(f'[OK] Product images -> static/products (*.svg): {updated} updated')
+
+
 def seed_orders(target=520):
     """Sinh đơn hàng + order_items + payment + shipment."""
     existing = Order.query.count()
@@ -552,6 +564,8 @@ def seed_de_cuong(*, reset=False, small=False, fixed=False):
         seed_orders(target=t['orders'])
         seed_reviews(target=t['reviews'])
         seed_ai_conversations(target=t['ai_conversations'])
+
+    assign_product_images()
 
     counts = {
         'users': User.query.count(),
