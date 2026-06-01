@@ -307,11 +307,21 @@ _bootstrapped = False
 
 
 def bootstrap_database():
-    """Tạo bảng + seed đủ ngưỡng đề cương khi chạy production (Render)."""
+    """Tạo bảng; trên Render copy nongsan_demo.db nếu DB trống."""
     global _bootstrapped
     with _bootstrap_lock:
         if _bootstrapped:
             return
+        import shutil
+        basedir = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(basedir, 'nongsan.db')
+        demo_path = os.path.join(basedir, 'nongsan_demo.db')
+        if os.path.isfile(demo_path) and (
+            not os.path.isfile(db_path) or os.path.getsize(db_path) < 50_000
+        ):
+            shutil.copy2(demo_path, db_path)
+            app.logger.info('Da copy nongsan_demo.db -> nongsan.db')
+
         with app.app_context():
             db.create_all()
             try:

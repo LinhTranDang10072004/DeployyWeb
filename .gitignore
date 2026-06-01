@@ -6,10 +6,11 @@ venv/
 env/
 ENV/
 
-# DB local
+# DB local (giữ bản demo cho Render build)
 *.db
 *.sqlite
 *.sqlite3
+!nongsan_demo.db
 
 # Logs
 logs/
@@ -19,7 +20,7 @@ logs/
 .env
 .env.*
 
-# Uploads (giữ thư mục, bỏ ảnh user upload)
+# Uploads (giữ thư mục, bỏ ảnh user upload; ảnh seed nằm static/products/)
 static/uploads/*
 !static/uploads/.gitkeep
 
