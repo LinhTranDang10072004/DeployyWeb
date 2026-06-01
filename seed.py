@@ -23,6 +23,7 @@ import secrets
 from datetime import datetime, timedelta
 
 from config import DE_CUONG_MIN, SEED_TARGETS
+from product_images import image_path_for_product_name
 from app import app
 from models import (
     db, User, Category, Product, Order, OrderItem,
@@ -264,7 +265,7 @@ def seed_products(target=320):
             category=cat_name,
             origin=origin,
             is_visible=True,
-            image='default.jpg',
+            image=image_path_for_product_name(name_base),
             created_at=datetime.utcnow() - timedelta(days=random.randint(0, 120)),
         )
         db.session.add(p)

@@ -145,7 +145,9 @@ def is_external_image_url(value):
 def build_image_url(image_value):
     if is_external_image_url(image_value):
         return image_value
-    image_name = image_value or 'default.jpg'
+    image_name = (image_value or 'products/default.jpg').strip()
+    if image_name.startswith('products/'):
+        return url_for('static', filename=image_name)
     return url_for('static', filename=f'uploads/{image_name}')
 
 
