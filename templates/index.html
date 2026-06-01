@@ -84,7 +84,7 @@
                 <img src="{{ image_url(product.image) }}"
                      alt="{{ product.name }}"
                      class="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                     onerror="this.src='{{ url_for('static', filename='products/default.svg') }}'">
+                     onerror="this.src='{{ url_for('static', filename='products/default.jpg') }}'">
                 {% if product.stock <= 10 and product.stock > 0 %}
                 <span class="absolute top-2 left-2 bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full font-medium">Sắp hết</span>
                 {% elif product.stock == 0 %}
