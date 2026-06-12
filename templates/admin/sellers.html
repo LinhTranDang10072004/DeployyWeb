@@ -3,57 +3,95 @@
 {% block page_title %}Quản lý Seller{% endblock %}
 
 {% block admin_content %}
-<div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-    <h1 class="text-xl font-bold text-gray-800 mb-5">Danh sách seller</h1>
-    {% if sellers %}
-    <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-            <thead>
-                <tr class="text-left text-gray-500 border-b">
-                    <th class="py-2 pr-4">Tài khoản</th>
-                    <th class="py-2 pr-4">Email</th>
-                    <th class="py-2 pr-4">Trạng thái</th>
-                    <th class="py-2">Thao tác</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for seller in sellers %}
-                <tr class="border-b border-gray-100">
-                    <td class="py-3 pr-4">
-                        <p class="font-medium text-gray-800">{{ seller.full_name }}</p>
-                        <p class="text-xs text-gray-500">@{{ seller.username }}</p>
-                    </td>
-                    <td class="py-3 pr-4">{{ seller.email }}</td>
-                    <td class="py-3 pr-4">
-                        {% if seller.is_active %}
-                            <span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">Đang hoạt động</span>
-                        {% else %}
-                            <span class="px-2 py-1 rounded-full text-xs bg-red-100 text-red-700">Đã khóa</span>
-                        {% endif %}
-                    </td>
-                    <td class="py-3 space-x-2">
-                        <form action="{{ url_for('admin_seller_approve', user_id=seller.id) }}" method="POST" class="inline">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit"
-                                    class="inline-flex items-center px-3 py-1.5 rounded-md text-xs bg-blue-50 text-blue-700 hover:bg-blue-100">
-                                Duyệt
-                            </button>
-                        </form>
-                        <form action="{{ url_for('admin_seller_toggle_active', user_id=seller.id) }}" method="POST" class="inline">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit"
-                                    class="inline-flex items-center px-3 py-1.5 rounded-md text-xs bg-amber-50 text-amber-700 hover:bg-amber-100">
-                                Khóa/Mở khóa
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <p class="text-sm text-gray-500">Chưa có tài khoản seller.</p>
-    {% endif %}
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
+  <p class="text-gray-500 text-sm">
+    Tổng cộng <span class="font-semibold text-gray-700">{{ sellers|length }}</span> seller
+    · Seller đang hoạt động hiển thị trước, tài khoản đã khóa ở cuối danh sách
+  </p>
+  <a href="{{ url_for('admin_seller_add') }}"
+     class="inline-flex items-center gap-2 bg-green-brand-600 text-white px-5 py-2.5 rounded-lg hover:bg-green-brand-700 transition font-medium text-sm shadow-sm">
+    <i class="fas fa-plus"></i> Thêm seller
+  </a>
+</div>
+
+<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+  {% if sellers %}
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead class="bg-gray-50 border-b">
+        <tr class="text-left text-gray-500">
+          <th class="px-4 py-3 font-medium">Tài khoản</th>
+          <th class="px-4 py-3 font-medium">Liên hệ</th>
+          <th class="px-4 py-3 font-medium">Ngày tạo</th>
+          <th class="px-4 py-3 font-medium">Trạng thái</th>
+          <th class="px-4 py-3 font-medium text-center">Thao tác</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for seller in sellers %}
+        <tr class="transition {% if not seller.is_active %}bg-gray-50 opacity-75{% else %}hover:bg-gray-50{% endif %}">
+          <td class="px-4 py-3">
+            <p class="font-medium text-gray-800">{{ seller.full_name }}</p>
+            <p class="text-xs text-gray-500">@{{ seller.username }}</p>
+          </td>
+          <td class="px-4 py-3">
+            <p>{{ seller.email }}</p>
+            <p class="text-xs text-gray-400">{{ seller.phone or '—' }}</p>
+          </td>
+          <td class="px-4 py-3 text-gray-600">
+            {{ seller.created_at.strftime('%d/%m/%Y') if seller.created_at else '—' }}
+          </td>
+          <td class="px-4 py-3">
+            {% if seller.is_active %}
+              <span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700 font-medium">Đang hoạt động</span>
+            {% else %}
+              <span class="px-2 py-1 rounded-full text-xs bg-red-100 text-red-700 font-medium">Đã khóa</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3">
+            <div class="flex items-center justify-center gap-2 flex-wrap">
+              <a href="{{ url_for('admin_seller_edit', user_id=seller.id) }}"
+                 class="inline-flex items-center px-3 py-1.5 rounded-md text-xs bg-blue-50 text-blue-700 hover:bg-blue-100"
+                 title="Sửa">
+                <i class="fas fa-edit mr-1"></i> Sửa
+              </a>
+
+              {% if seller.is_active %}
+              <form action="{{ url_for('admin_seller_lock', user_id=seller.id) }}" method="POST"
+                    class="inline"
+                    onsubmit="return confirm('Khóa tài khoản seller &quot;{{ seller.full_name }}&quot;? Seller sẽ không đăng nhập được.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit"
+                        class="inline-flex items-center px-3 py-1.5 rounded-md text-xs bg-red-50 text-red-700 hover:bg-red-100"
+                        title="Khóa tài khoản">
+                  <i class="fas fa-lock mr-1"></i> Khóa
+                </button>
+              </form>
+              {% else %}
+              <form action="{{ url_for('admin_seller_unlock', user_id=seller.id) }}" method="POST" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit"
+                        class="inline-flex items-center px-3 py-1.5 rounded-md text-xs bg-amber-50 text-amber-700 hover:bg-amber-100"
+                        title="Mở khóa tài khoản">
+                  <i class="fas fa-unlock mr-1"></i> Mở khóa
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="p-10 text-center">
+    <p class="text-gray-500 mb-4">Chưa có tài khoản seller.</p>
+    <a href="{{ url_for('admin_seller_add') }}"
+       class="inline-flex items-center gap-2 bg-green-brand-600 text-white px-5 py-2.5 rounded-lg hover:bg-green-brand-700 transition text-sm">
+      <i class="fas fa-plus"></i> Tạo seller đầu tiên
+    </a>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

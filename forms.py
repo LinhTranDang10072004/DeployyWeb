@@ -135,6 +135,36 @@ class CheckoutForm(FlaskForm):
 
 
 # ============================================================
+# FORM SELLER (Admin tạo / sửa tài khoản seller)
+# ============================================================
+class AdminSellerForm(FlaskForm):
+    username = StringField('Tên đăng nhập', validators=[
+        DataRequired(message='Vui lòng nhập tên đăng nhập.'),
+        Length(min=3, max=80, message='Tên đăng nhập từ 3 đến 80 ký tự.'),
+    ])
+    email = StringField('Email', validators=[
+        DataRequired(message='Vui lòng nhập email.'),
+        Email(message='Email không hợp lệ.'),
+    ])
+    full_name = StringField('Họ và tên', validators=[
+        DataRequired(message='Vui lòng nhập họ tên.'),
+        Length(max=150),
+    ])
+    phone = StringField('Số điện thoại', validators=[Optional(), Length(max=20)])
+    address = StringField('Địa chỉ', validators=[Optional(), Length(max=300)])
+    password = PasswordField('Mật khẩu', validators=[
+        Optional(),
+        Length(min=6, message='Mật khẩu tối thiểu 6 ký tự.'),
+    ])
+    confirm_password = PasswordField('Xác nhận mật khẩu', validators=[
+        Optional(),
+        EqualTo('password', message='Mật khẩu không khớp.'),
+    ])
+    is_active = BooleanField('Tài khoản đang hoạt động', default=True)
+    submit = SubmitField('Lưu seller')
+
+
+# ============================================================
 # FORM CHATBOT AI
 # ============================================================
 class ChatForm(FlaskForm):

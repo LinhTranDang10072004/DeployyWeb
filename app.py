@@ -21,7 +21,10 @@ from models import (
     db, User, Category, Product, Order, OrderItem,
     Payment, Shipment, Review, ReturnRequest, AIConversation,
 )
-from forms import LoginForm, RegisterForm, ProductForm, CheckoutForm, ChatForm, ProfileForm
+from forms import (
+    LoginForm, RegisterForm, ProductForm, CheckoutForm, ChatForm, ProfileForm,
+    AdminSellerForm,
+)
 from ai_engine import ai_engine
 
 try:
@@ -1008,35 +1011,138 @@ def admin_dashboard():
 # ============================================================
 # ADMIN: QUẢN LÝ SELLER
 # ============================================================
+def get_admin_sellers_query():
+    """Seller đang hoạt động trước; tài khoản đã khóa xếp xuống cuối."""
+    return (
+        User.query.filter_by(role='seller')
+        .order_by(User.is_active.desc(), User.created_at.desc())
+    )
+
+
+def _validate_seller_form_unique(form, seller_id=None):
+    """Kiểm tra username/email trùng (bỏ qua chính seller đang sửa)."""
+    q_user = User.query.filter_by(username=form.username.data)
+    if seller_id:
+        q_user = q_user.filter(User.id != seller_id)
+    if q_user.first():
+        flash('Tên đăng nhập đã tồn tại!', 'danger')
+        return False
+
+    q_email = User.query.filter_by(email=form.email.data)
+    if seller_id:
+        q_email = q_email.filter(User.id != seller_id)
+    if q_email.first():
+        flash('Email đã được sử dụng!', 'danger')
+        return False
+    return True
+
+
 @app.route('/admin/sellers')
 @admin_required
 def admin_sellers():
-    sellers = User.query.filter_by(role='seller').order_by(User.created_at.desc()).all()
+    sellers = get_admin_sellers_query().all()
     return render_template('admin/sellers.html', sellers=sellers)
 
 
-@app.route('/admin/sellers/<int:user_id>/approve', methods=['POST'])
+@app.route('/admin/sellers/add', methods=['GET', 'POST'])
 @admin_required
-def admin_seller_approve(user_id):
-    user = User.query.get_or_404(user_id)
-    user.role = 'seller'
-    user.is_active = True
+def admin_seller_add():
+    form = AdminSellerForm()
+    if form.validate_on_submit():
+        if not form.password.data:
+            flash('Vui lòng nhập mật khẩu cho tài khoản seller mới.', 'danger')
+            return render_template('admin/seller_form.html', form=form, title='Thêm seller')
+
+        if not _validate_seller_form_unique(form):
+            return render_template('admin/seller_form.html', form=form, title='Thêm seller')
+
+        seller = User(
+            username=form.username.data,
+            email=form.email.data,
+            full_name=form.full_name.data,
+            phone=form.phone.data,
+            address=form.address.data,
+            role='seller',
+            is_active=form.is_active.data,
+        )
+        seller.set_password(form.password.data)
+        db.session.add(seller)
+        db.session.commit()
+        app.logger.info(f'Admin {current_user.username} created seller: {seller.username}')
+        flash(f'Đã tạo tài khoản seller: {seller.full_name}', 'success')
+        return redirect(url_for('admin_sellers'))
+
+    return render_template('admin/seller_form.html', form=form, title='Thêm seller')
+
+
+@app.route('/admin/sellers/edit/<int:user_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_seller_edit(user_id):
+    seller = User.query.get_or_404(user_id)
+    if not seller.is_seller():
+        flash('Tài khoản này không phải seller.', 'warning')
+        return redirect(url_for('admin_sellers'))
+
+    form = AdminSellerForm(obj=seller)
+    if form.validate_on_submit():
+        if not _validate_seller_form_unique(form, seller_id=seller.id):
+            return render_template(
+                'admin/seller_form.html', form=form, seller=seller, title='Sửa seller',
+            )
+
+        if form.password.data:
+            seller.set_password(form.password.data)
+
+        seller.username = form.username.data
+        seller.email = form.email.data
+        seller.full_name = form.full_name.data
+        seller.phone = form.phone.data
+        seller.address = form.address.data
+        seller.is_active = form.is_active.data
+        db.session.commit()
+        app.logger.info(f'Admin {current_user.username} updated seller: {seller.username}')
+        flash(f'Đã cập nhật seller: {seller.full_name}', 'success')
+        return redirect(url_for('admin_sellers'))
+
+    return render_template(
+        'admin/seller_form.html', form=form, seller=seller, title='Sửa seller',
+    )
+
+
+@app.route('/admin/sellers/<int:user_id>/lock', methods=['POST'])
+@admin_required
+def admin_seller_lock(user_id):
+    """Xóa mềm: khóa tài khoản seller (không xóa cứng)."""
+    seller = User.query.get_or_404(user_id)
+    if not seller.is_seller():
+        flash('Tài khoản này không phải seller.', 'warning')
+        return redirect(url_for('admin_sellers'))
+    if not seller.is_active:
+        flash(f'Seller "{seller.full_name}" đã bị khóa trước đó.', 'info')
+        return redirect(url_for('admin_sellers'))
+
+    seller.is_active = False
     db.session.commit()
-    flash(f'Đã duyệt seller: {user.full_name}', 'success')
+    app.logger.info(f'Admin {current_user.username} locked seller: {seller.username}')
+    flash(f'Đã khóa seller: {seller.full_name}. Tài khoản được đẩy xuống cuối danh sách.', 'info')
     return redirect(url_for('admin_sellers'))
 
 
-@app.route('/admin/sellers/<int:user_id>/toggle-active', methods=['POST'])
+@app.route('/admin/sellers/<int:user_id>/unlock', methods=['POST'])
 @admin_required
-def admin_seller_toggle_active(user_id):
-    user = User.query.get_or_404(user_id)
-    if not user.is_seller():
+def admin_seller_unlock(user_id):
+    seller = User.query.get_or_404(user_id)
+    if not seller.is_seller():
         flash('Tài khoản này không phải seller.', 'warning')
         return redirect(url_for('admin_sellers'))
-    user.is_active = not user.is_active
+    if seller.is_active:
+        flash(f'Seller "{seller.full_name}" đang hoạt động.', 'info')
+        return redirect(url_for('admin_sellers'))
+
+    seller.is_active = True
     db.session.commit()
-    status = 'mở khóa' if user.is_active else 'khóa'
-    flash(f'Đã {status} seller: {user.full_name}', 'info')
+    app.logger.info(f'Admin {current_user.username} unlocked seller: {seller.username}')
+    flash(f'Đã mở khóa seller: {seller.full_name}', 'success')
     return redirect(url_for('admin_sellers'))
 
 
